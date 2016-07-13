@@ -13,7 +13,8 @@ kibi: context [
 	lines:	make block! 1000
 	render:	make block! 1000
 
-	cursor: [1x1 1x1]
+	source: 1x1											;-- position in text (col, row)
+	cursor: 1x1											;-- relative to screen (col, row)
 	scroll: 1x1
 	screen: 0x0											;-- row x columns
 	output: make binary! 200 * 150
@@ -49,38 +50,43 @@ kibi: context [
 		clear out: output
 		
 		append out "^[[?25l"							;-- Hide cursor
-    	append out "^[[H"								;-- Go home
-		
+		append out "^[[H^[[39m"							;-- Go home
+log mold lines		
 		mode: 0
 		repeat y screen/y - 2 [
-			repeat x screen/x [
-				either y > length? lines [
-					append output "~^[[0K^M^/"
-				][
-					;if mode <> new: render/y/x [
+			either y > length? lines [
+				append out "~^[[0K^M^/"
+			][
+				max-x: either line: lines/y [length? line][screen/x]
+				repeat x max-x [				
+					;if mode <> new: render/:y/:x [
 					;	mode: new
 					;	append output 
 					;]
-					append output lines/y/x
+					log ["char:" line/:x]
+					append out line/:x
 				]
+				append out CRLF
 			]
 		]
 		append out "^[[39m^[[0K^M^/"
 		
-		append out "^[[0K^[[7m"
-		append out form ["Current:" cursor/1 "Total lines:" length? lines]
-		append out "^[0m^M^/"
+		;append out "^[[0K^[[7m"
+		;append out form reduce ["Current:" source "Total lines:" length? lines]
+		;append out "^[0m^M^/"
 		
-		append out "^[[0K"
-		append out status
+		;append out "^[[0K"
+		;append out status
 		
 		;@@ handle TABS
-		append out rejoin [#"^[" cursor/2/x #";" cursor/2/y "H^[?25h"]
-		; write out
+		;append out rejoin [#"^[" cursor/x #";" cursor/y "H^[?25h"]
+		log to string! out
+		emit-buffer out
 	]
 	
 	read-key: function [][
-		switch/default key: read-char [
+		log mold key: read-char	
+		switch/default key [
 			3	[none]									;-- Ctrl-C
 			4	[none]									;-- Ctrl-D
 			6	['find]									;-- Ctrl-F
@@ -96,9 +102,15 @@ kibi: context [
 	]
 	
 	insert-char: function [c [char!]][
-		insert at lines/(cursor/y) cursor/x c
+		if cursor/y > length? lines [append lines make string! 100]
 		
-		if (cursor/1/x: cursor/1/x + 1) > (scroll/x + screen/x) [
+		either cursor/x >= length? line: lines/(cursor/y) [
+			append line c
+		][
+			insert at line cursor/x c
+		]
+		
+		if (source/x: source/x + 1) > (scroll/x + screen/x) [
 			scroll/x: scroll/x + 1
 		]
 	]
@@ -123,22 +135,22 @@ kibi: context [
 					delete	[]
 					tab		[]
 					left	[
-						if (cursor/1/x: max 1 cursor/1/x - 1) < scroll/x [
+						if (source/x: max 1 source/x - 1) < scroll/x [
 							scroll/x: cursor/1/x
 						]
 					]
 					right	[
-						if (cursor/1/x: cursor/1/x + 1) > (scroll/x + screen/x) [
+						if (source/x: source/x + 1) > (scroll/x + screen/x) [
 							scroll/x: scroll/x + 1
 						] 
 					]
 					up		[
-						if (cursor/1/y: max 1 cursor/1/y - 1) < scroll/y [
-							scroll/y: cursor/1/y
+						if (source/y: max 1 source/y - 1) < scroll/y [
+							scroll/y: source/y
 						]
 					]
 					down	[
-						if (cursor/1/y: cursor/1/y + 1) > (scroll/y + screen/y) [
+						if (source/y: source/y + 1) > (scroll/y + screen/y) [
 							scroll/y: scroll/y + 1
 						] 
 					]
@@ -153,12 +165,13 @@ kibi: context [
 	
 	log: func [msg][write/append %kibi.log form reduce [reduce msg lf]]
 	
-	boot: function [][
+	boot: function [/extern screen status][
 		if args: system/options/args [load-file args]
 		
-		open-terminal
-		get-window-size screen
+		screen: get-window-size
 		log ["screen: " screen]
+		
+		open-terminal
 
 		status: "HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find"
 		launch

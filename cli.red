@@ -294,14 +294,13 @@ Red []
 
 open-terminal:  routine [][kibi/init]
 close-terminal: routine [][kibi/restore]
-read-char:		routine [][kibi/read-char]
+read-char:		routine [][integer/box kibi/read-char]
 
-get-window-size: routine [p [pair!]][
-	kibi/get-window-size p
+emit-buffer:	routine [buffer [binary!]][
+	write stdout as-c-string binary/rs-head buffer binary/rs-length? buffer
 ]
 
-
-
-
-
+get-window-size: routine [][
+	kibi/get-window-size pair/make-at stack/arguments 0 0
+]
 
