@@ -20,6 +20,8 @@ kibi: context [
 	output: make binary! 200 * 150
 	status: ""											;-- status message
 	
+	digits: charset "012345789"
+	
 	colors: object [
 		comment: 
 		comment-multi: 36								;-- cyan
@@ -50,42 +52,41 @@ kibi: context [
 		clear out: output
 		
 		append out "^[[?25l"							;-- Hide cursor
-		append out "^[[H^[[39m"							;-- Go home
-log mold lines		
+		append out "^[[H"								;-- Go home
+log mold lines
 		mode: 0
+		rows: length? lines
 		repeat y screen/y - 2 [
-			either y > length? lines [
-				append out "~^[[0K^M^/"
+			either y > rows [
+				append out "~^[[0K"
 			][
-				max-x: either line: lines/y [length? line][screen/x]
-				repeat x max-x [				
+				cols: either line: lines/:y [length? line][screen/x]
+				repeat x cols [
 					;if mode <> new: render/:y/:x [
 					;	mode: new
 					;	append output 
 					;]
-					log ["char:" line/:x]
-					append out line/:x
+					append out either x <= length? line [line/:x][#" "]
 				]
-				append out CRLF
 			]
+			append out "^[[39m^[[0K^M^/"
 		]
-		append out "^[[39m^[[0K^M^/"
 		
-		;append out "^[[0K^[[7m"
-		;append out form reduce ["Current:" source "Total lines:" length? lines]
-		;append out "^[0m^M^/"
+		append out "^[[0K^[[7m"
+		append out form reduce ["Cursor:" source "Total lines:" length? lines]
+		append out "^[[0m^M^/"
 		
-		;append out "^[[0K"
-		;append out status
+		append out "^[[0K"
+		append out status
 		
 		;@@ handle TABS
-		;append out rejoin [#"^[" cursor/x #";" cursor/y "H^[?25h"]
-		log to string! out
+		append out rejoin ["^[[" cursor/y #";" cursor/x "H^[[?25h"]
+		;log to string! out
 		emit-buffer out
 	]
 	
 	read-key: function [][
-		log mold key: read-char	
+		log mold key: read-byte
 		switch/default key [
 			3	[none]									;-- Ctrl-C
 			4	[none]									;-- Ctrl-D
@@ -93,9 +94,41 @@ log mold lines
 			8	['delete]								;-- Ctrl-H
 			9   ['tab]
 			12	['load]									;-- Ctrl-L
+			13	['enter]								;-- Enter
 			17	['quit]									;-- Ctrl-Q
 			19	['save]									;-- Ctrl-S
 			21	['undo]									;-- Ctrl-U
+			27  [
+			log "reading key2 key3:"
+			log key2: read-byte
+				if negative? key2 [return key]
+			log key3: read-byte
+				if negative? key3 [return key]
+				
+				either key2 = #"[" [
+					either find digits key3 [
+						if negative? key: read-byte [return escape]
+						if key = #"~" [
+							return select [
+								#"3" delete
+								#"5" page-up
+								#"6" page-down
+							] key3
+						]
+					][
+						return select [
+							#"A" up
+							#"B" down
+							#"C" right
+							#"D" left
+							#"H" home
+							#"F" end
+						] key3
+					]
+				][
+					if key2 = #"O" [select [#"H" home #"F" end] key3]
+				]
+			]
 			127 ['backspace]
 			
 		][make char! key]
@@ -107,8 +140,9 @@ log mold lines
 		either cursor/x >= length? line: lines/(cursor/y) [
 			append line c
 		][
-			insert at line cursor/x c
+			insert next at line cursor/x c
 		]
+		cursor/x: cursor/x + 1
 		
 		if (source/x: source/x + 1) > (scroll/x + screen/x) [
 			scroll/x: scroll/x + 1
@@ -125,8 +159,13 @@ log mold lines
 		
 		forever [
 			either char? c: read-key [insert-char c][
+log mold c
 				switch c [
-					enter	[]
+					enter	[
+						cursor/x: 1
+						cursor/y: cursor/y + 1
+						insert at lines cursor/y make string! 100
+					]
 					quit	[exit]
 					load	[]
 					save	[]
@@ -135,22 +174,29 @@ log mold lines
 					delete	[]
 					tab		[]
 					left	[
-						if (source/x: max 1 source/x - 1) < scroll/x [
+						if (cursor/x: max 1 cursor/x - 1) < scroll/x [
 							scroll/x: cursor/1/x
 						]
 					]
 					right	[
-						if (source/x: source/x + 1) > (scroll/x + screen/x) [
+						if all [
+							cursor/x <= length? lines/(cursor/y)
+							(cursor/x: cursor/x + 1) > (scroll/x + screen/x)
+						][
 							scroll/x: scroll/x + 1
 						] 
 					]
 					up		[
-						if (source/y: max 1 source/y - 1) < scroll/y [
+						if (cursor/y: max 1 cursor/y - 1) < scroll/y [
 							scroll/y: source/y
 						]
+						cursor/x: min cursor/x length? lines/(cursor/y)
 					]
 					down	[
-						if (source/y: source/y + 1) > (scroll/y + screen/y) [
+						if all [
+							cursor/y < length? lines
+							(cursor/y: cursor/y + 1) > (scroll/y + screen/y)
+						][
 							scroll/y: scroll/y + 1
 						] 
 					]

@@ -294,7 +294,7 @@ Red []
 
 open-terminal:  routine [][kibi/init]
 close-terminal: routine [][kibi/restore]
-read-char:		routine [][integer/box kibi/read-char]
+read-byte:		routine [][integer/box kibi/read-char]
 
 emit-buffer:	routine [buffer [binary!]][
 	write stdout as-c-string binary/rs-head buffer binary/rs-length? buffer
